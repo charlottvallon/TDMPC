@@ -19,7 +19,7 @@ We evaluate two different LMPC controllers on the new track:
 Our results demonstrate that the TDMPC allows an LMPC to converge to an optimal minimum-time trajectory faster than finding an initial feasible trajectory using simple initialization methods such as the PID path-following controller.
 
 <p align="center">
-<img src="https://github.com/urosolia/RacingLMPC/blob/master/src/ClosedLoop.gif" width="500" />
+<img src="https://github.com/charlottvallon/TDMPC/blob/master/src/data/accCar.jpg" width="500" />
 </p>
 
 ## References
