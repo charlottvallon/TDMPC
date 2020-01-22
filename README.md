@@ -22,6 +22,10 @@ Our results demonstrate that the TDMPC allows an LMPC to converge to an optimal 
 <img src="https://github.com/charlottvallon/TDMPC/blob/master/src/data/accCar.jpg" width="500" />
 </p>
 
+Solarized dark             |  Solarized Ocean
+:-------------------------:|:-------------------------:
+![](https://github.com/charlottvallon/TDMPC/blob/master/src/data/accCar.jpg)  |  ![](https://github.com/charlottvallon/TDMPC/blob/master/src/data/accCarCost.jpg)
+
 ## References
 
 This code is based on the following publications:
