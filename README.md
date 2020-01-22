@@ -32,4 +32,4 @@ This code is based on the following publications:
 
 ## Questions
 
-Please direct any questions you have about this code to charlottvallonATberkeley.edu
+Please direct any questions you have about this code to charlottvallonATberkeleyDOTedu
