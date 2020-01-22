@@ -4,44 +4,38 @@
 # including a reference to the papers describing the control framework:
 # [1] Ugo Rosolia and Francesco Borrelli. "Learning Model Predictive Control for Iterative Tasks. A Data-Driven
 #     Control Framework." In IEEE Transactions on Automatic Control (2017).
+# [2] Charlott Vallon and Francesco Borrelli. "Task Decomposition for Iterative Learning Model Predictive Control."
+#     In 2020 IEEE American Control Conference (ACC)
 #
-# [2] Ugo Rosolia, Ashwin Carvalho, and Francesco Borrelli. "Autonomous racing using learning model predictive control."
-#     In 2017 IEEE American Control Conference (ACC)
+# Attibution Information: Code developed by Charlott Vallon and Ugo Rosolia
+# (for clarifications and suggestions please write to charlottvallon@berkeley.edu, ugo.rosolia@berkeley.edu).
 #
-# [3] Maximilian Brunner, Ugo Rosolia, Jon Gonzales and Francesco Borrelli "Repetitive learning model predictive
-#     control: An autonomous racing example" In 2017 IEEE Conference on Decision and Control (CDC)
-#
-# [4] Ugo Rosolia and Francesco Borrelli. "Learning Model Predictive Control for Iterative Tasks: A Computationally
-#     Efficient Approach for Linear System." IFAC-PapersOnLine 50.1 (2017).
-#
-# Attibution Information: Code developed by Ugo Rosolia
-# (for clarifications and suggestions please write to ugo.rosolia@berkeley.edu).
-#
-# Code description: Simulation of the Learning Model Predictive Controller (LMPC). The main file runs:
+# Code description: Simulation of the Task Decomposition for Iterative Learning Model Predictive Controller (TDMPC). 
+# The main file runs:
 # 1) A PID path following controller
 # 2) A Model Predictive Controller (MPC) which uses a LTI model identified from the data collected with the PID in 1)
 # 3) A MPC which uses a LTV model identified from the date collected in 1)
 # 4) A LMPC for racing where the safe set and value function approximation are build using the data from 1), 2) and 3)
+# 5) Two versions of the LMPC controller on an unseen track, consisting of the same track segments as parts 1)-4):
+#   - an LMPC controller initialized using Task Decomposition (TDMPC)
+#   - a basic LMPC controller initialized using a PID path following controller
+# 6) An option for Multi-Shuffling, which designs LMPC safe sets using TDMPC from several different tasks (rather than
+#    just one previously seen subtask sequence). This is associated with more drastic cost improvement over basic LMPC.
 # ----------------------------------------------------------------------------------------------------------------------
 
 import sys
 sys.path.append('fnc')
-import os
-from os.path import expanduser
 from SysModel import Simulator, PID
 from Classes import ClosedLoopData, LMPCprediction
 from PathFollowingLTVMPC import PathFollowingLTV_MPC
 from PathFollowingLTIMPC import PathFollowingLTI_MPC
-from Track import Map, unityTestChangeOfCoordinates
+from Track import Map
 from LMPC import ControllerLMPC, PWAControllerLMPC
 from Utilities import Regression
-from plot import plotTrajectory, plotClosedLoopLMPC, animation_xy, animation_states, saveGif_xyResults, Save_statesAnimation, plotMap, plotSafeSet, plotTrajectoriesComparison, plotQprogression
+from plot import plotTrajectory, plotClosedLoopLMPC, plotMap, plotSafeSet
 import numpy as np
 import matplotlib.pyplot as plt
-from matplotlib import gridspec
-import pdb
 import pickle
-import random
 
 # ======================================================================================================================
 # ============================ Choose which controller to run to set up problem ========================================
@@ -49,18 +43,12 @@ import random
 RunPID     = 0; plotFlag       = 1
 RunMPC     = 0; plotFlagMPC    = 1
 RunMPC_tv  = 0; plotFlagMPC_tv = 1
-RunLMPC    = 1; plotFlagLMPC   = 1; animation_xyFlag = 1; animation_stateFlag = 0
+RunLMPC    = 0; plotFlagLMPC   = 1; animation_xyFlag = 1; animation_stateFlag = 0
+RunShuffle = 1;
 runPWAFlag = 0; # uncomment importing pwa_cluster in LMPC.py
 testCoordChangeFlag = 0;
 plotOneStepPredictionErrors = 1;
 
-DesiredShuffles = 1
-
-random.seed()
-directory_index = random.randint(1, 1000)
-home = expanduser('~')
-dl_path = home + '/Desktop/RacingLMPC/'+str(directory_index)
-os.makedirs(dl_path)
 # ======================================================================================================================
 # ============================ Initialize parameters for path following ================================================
 # ======================================================================================================================
@@ -70,7 +58,7 @@ TimeMPC    = 100             # Simulation time for path following MPC
 TimeMPC_tv = 100             # Simulation time for path following LTV-MPC
 vt         = 0.8             # Reference velocity for path following controllers
 v0         = 0.5             # Initial velocity at lap 0
-N          = 12              # Horizon length
+N          = 12            # Horizon length
 n = 6;   d = 2               # State and Input dimension
 
 # Path Following tuning
@@ -85,6 +73,7 @@ simulator = Simulator(map)                # Initialize the Simulator
 # ======================================================================================================================
 TimeLMPC   = 400              # Simulation time
 Laps       = 5+2              # Total LMPC laps
+ShuffledLaps = 2+10
 
 # Safe Set Parameter
 LMPC_Solver = "CVX"           # Can pick CVX for cvxopt or OSQP. For OSQP uncomment line 14 in LMPC.py
@@ -121,6 +110,7 @@ print("===== PID terminated")
 if plotFlag == 1:
     plotTrajectory(map, ClosedLoopDataPID.x, ClosedLoopDataPID.x_glob, ClosedLoopDataPID.u)
     plt.show()
+    
 # ======================================================================================================================
 # ======================================  LINEAR REGRESSION ============================================================
 # ======================================================================================================================
@@ -185,7 +175,7 @@ if runPWAFlag == 1:
     LMPController = PWAControllerLMPC(10, numSS_Points, numSS_it, N, Qslack, Q_LMPC, R_LMPC, dR_LMPC, n, d, shift, dt, map, Laps, TimeLMPC, LMPC_Solver)
 else:
     LMPController = ControllerLMPC(numSS_Points, numSS_it, N, Qslack, Q_LMPC, R_LMPC, dR_LMPC, n, d, shift, dt, map, Laps, TimeLMPC, LMPC_Solver)
-    onlyLMPController = ControllerLMPC(numSS_Points, numSS_it, N, Qslack, Q_LMPC, R_LMPC, dR_LMPC, n, d, shift, dt, map, (Laps + (DesiredShuffles+1)*3*7), TimeLMPC, LMPC_Solver)
+    onlyLMPController = ControllerLMPC(numSS_Points, numSS_it, N, Qslack, Q_LMPC, R_LMPC, dR_LMPC, n, d, shift, dt, map, 10*Laps, TimeLMPC, LMPC_Solver)
 
 # add previously completed trajectories to Safe Set: 
 LMPController.addTrajectory(ClosedLoopDataPID)
@@ -210,8 +200,6 @@ if RunLMPC == 1:
             # Reset Initial Conditions
             x0[0,:]      = ClosedLoopLMPC.x[ClosedLoopLMPC.SimTime, :] - np.array([0, 0, 0, 0, map.TrackLength, 0])
             x0_glob[0,:] = ClosedLoopLMPC.x_glob[ClosedLoopLMPC.SimTime, :]
-            #x0[0,:]      = ClosedLoopLMPC.x[0,:]
-            #x0_glob[0,:] = ClosedLoopLMPC.x_glob[0,:]
 
     #file_data = open(sys.path[0]+'/data/LMPController.obj', 'wb')
     file_data = open('data/LMPController.obj', 'wb')
@@ -240,207 +228,183 @@ if plotFlagLMPC == 1:
     plotClosedLoopLMPC(LMPController, map)
     plt.show()
 
-
 # plot the safe set along the map 
 plotSafeSet(onlyLMPController.SS,map)
 raw_input("LMPC on original track is done.")
 
+
+# ======================================================================================================================
+# ======================================================= TDMPC ========================================================
+# ======================================================================================================================
+# We will now compare performance of the LMPC controller on the shuffled track. In particular, we consider two cases:
+#   1. Performance of the LMPC controller initialized with the PID Safe Set
+#   2. Performance of the LMPC controller initialized with TDMPC 
+# Performance will be evaluated on iterations required to traverse the course
+
 Shuffling_Iterations = 0
 
-# <codecell>
-# ======================================================================================================================
-# ========================================= TRACK/SAFE SET RESHUFFLING =================================================
-# ======================================================================================================================
-
-
-# run these simulations for longer to show convergence behavior to optimal trajectory
-Laps = 10
-ShuffledLaps = 10
-
+# if > 1, MultiShuffling is activated. 
+DesiredShuffles = 1 
 Cost_Improvement = np.zeros((DesiredShuffles,1))
 
-while Shuffling_Iterations < DesiredShuffles:
-
-    onlyLMPController.processQfun()
-    #   SS (u, SS, Q)
-    
-    # split safe set into modes
-    onlyLMPController.splitTheSS(map)
-    #   SS (u, SS, Q)
-    #   splitSS (u,SS,Q)
-        
-    # relativize safe set (set intial s --> 0)
-    onlyLMPController.relTheSplitSS(map)
-    #   SS (u, SS, Q)
-    #   splitSS (u,SS,Q)
-    #   relSplitSS (SS)
+if RunShuffle == 1:
+    while Shuffling_Iterations < DesiredShuffles:
+        infFlag = False # start by assuming feasibility
+        shuffledWell = False
+        onlyLMPController.processQfun()
+        # split safe set into modes
+        onlyLMPController.splitTheSS(map)          
+        # relativize safe set (set intial s --> 0)
+        onlyLMPController.relTheSplitSS(map)          
        
-    shuffledWell = False
-    while not shuffledWell: 
-        # shuffle safe set according to new track
-        shuffledMap = map.shuffle()    
-    
-        onlyLMPController.makeShuffledSS(shuffledMap) #uses as input self.SS, uSS, Qfun
-        # shuffledSplitSS (SS, uSS, Q)
-        # shuffledSS (SS, uSS, Q)
+        while not shuffledWell: 
+            shuffledMap = map.shuffle()    
+            plotMap(shuffledMap)
+            onlyLMPController.makeShuffledSS(shuffledMap) # turn relative safe set into absolute coordinates again (in modes)
+            plotSafeSet(onlyLMPController.shuffledSS, shuffledMap)
+            onlyLMPController.reachabilityAnalysis(A,B,Qslack,N)          
+            shuffledWell = bool(input("Shuffled correctly?"))   
         
-        onlyLMPController.reachabilityAnalysis(A,B,Qslack,N)
-        # reachableSS (SS, uSS, Qfun)
-        # reachableSplitSS (SS, uSS, Qfun)
+        plotSafeSet(onlyLMPController.reachableSS,shuffledMap)
+        onlyLMPController.reorganizeReachableSafeSet()
+        raw_input("Reachability analysis on new track is done.")
         
-        shuffledWell = bool(input("Shuffled correctly?"))   
+        # ========================================= 0. Set up for simulation on new track ======================================
+        simulatorPID = Simulator(shuffledMap) 
+        simulatorPID.laps = 1
+        
+        # ========================================= 0a. Run the PID controller on new track =====================================
+        ClosedLoopDataShuffledPID = ClosedLoopData(dt, 0.5*Time , v0) #gets reset
+        ShuffledPIDController = PID(vt) #sets the reference velocity and some timers?
+        simulatorPID.Sim(ClosedLoopDataShuffledPID, ShuffledPIDController) #simulates the PID controller for Time timesteps
+        file_data = open('data/ClosedLoopDataShuffledPID.obj', 'wb')
+        pickle.dump(ClosedLoopDataShuffledPID, file_data)
+        file_data.close()
+        
+        plotTrajectory(shuffledMap, ClosedLoopDataShuffledPID.x, ClosedLoopDataShuffledPID.x_glob, ClosedLoopDataShuffledPID.u)
+        plt.show()
+        
+        # ================================= 1. Create and run TDMPC-initialized LMPC controller ================================= 
+        raw_input("Going to start running Shuffled LMPC")
+        # This controller will start with a TDMPC-initialized safe set
+         
+        ClosedLoopTDMPC = ClosedLoopData(dt, TimeLMPC, v0)
+        TDMPCOpenLoopData = LMPCprediction(N, n, d, TimeLMPC, numSS_Points, ShuffledLaps) #to store open-loop prediction and safe sets
+        TDMPCSimulator = Simulator(shuffledMap, 1, 1) #now this simulator only runs for one lap, with the LMPC flag ON
+        TDMPCController = ControllerLMPC(numSS_Points, numSS_it, N, Qslack, Q_LMPC, R_LMPC, dR_LMPC, n, d, shift, dt, shuffledMap, ShuffledLaps, TimeLMPC, LMPC_Solver)
+        
+        rSS, ruSS, rQfun = onlyLMPController.selectBestTrajectory()
+        TDMPCController.addReachableSet(rSS,ruSS,rQfun,shuffledMap)
+        TDMPCController.addTrajectory(ClosedLoopDataShuffledPID)
+               
+        x0           = np.zeros((1,n))
+        x0_glob      = np.zeros((1,n))
+        x0[0,:]      = ClosedLoopTDMPC.x[0,:]
+        x0_glob[0,:] = ClosedLoopTDMPC.x_glob[0,:]
+        
+        for it in range(2, ShuffledLaps):
+            ClosedLoopTDMPC.updateInitialConditions(x0, x0_glob)
+            TDMPCSimulator.Sim(ClosedLoopTDMPC, TDMPCController, TDMPCOpenLoopData) #this runs one lap at a time due to initialization!
+            TDMPCController.addTrajectory(ClosedLoopTDMPC)
+              
+            if TDMPCController.feasible == 0:
+                infFlag = True
+                break
+            else:
+                # add successful trajectory
+                onlyLMPController.addTrajectoryToSS(onlyLMPController.shuffledSS, onlyLMPController.shuffleduSS, onlyLMPController.shuffledQfun, ClosedLoopTDMPC)
+                # Reset Initial Conditions
+                x0[0,:]      = ClosedLoopTDMPC.x[0,:]
+                x0_glob[0,:] = ClosedLoopTDMPC.x_glob[0,:]       
+        if infFlag:
+            continue
+        
+        plt.figure()
+        plotClosedLoopLMPC(TDMPCController,shuffledMap)
+        plt.title('MBTTL Initialized')
+        plt.show()
+        
+        file_data = open('data/TDMPCController.obj','wb')
+        pickle.dump(TDMPCController,file_data)
+        file_data.close()
     
-    #plotSafeSet(onlyLMPController.reachableSS,shuffledMap)
-    #onlyLMPController.reorganizeReachableSafeSet() for some reason this fucks everything up
-    rSS, ruSS, rQfun = onlyLMPController.selectBestTrajectory() #out comes one best trajectory
+        # =============================== 2. Create and run PID-initialized LMPC controller ==================================== 
+        raw_input("Going to start running PID-initialized LMPC Controller")
+        # This controller will start with a PID-initialized safe set
+        
+        ClosedLoopBasicLMPC = ClosedLoopData(dt, TimeLMPC, v0)
+        BasicLMPCOpenLoopData = LMPCprediction(N, n, d, TimeLMPC, numSS_Points, ShuffledLaps) #to store open-loop prediction and safe sets
+        BasicLMPCSimulator = Simulator(shuffledMap, 1, 1) #now this simulator only runs for one lap, with the LMPC flag ON
+        BasicLMPCController = ControllerLMPC(numSS_Points, numSS_it, N, Qslack, Q_LMPC, R_LMPC, dR_LMPC, n, d, shift, dt, shuffledMap, ShuffledLaps, TimeLMPC, LMPC_Solver)
+        
+        BasicLMPCController.addTrajectory(ClosedLoopDataShuffledPID)
+        BasicLMPCController.addTrajectory(ClosedLoopDataShuffledPID)
+        
+        x0           = np.zeros((1,n))
+        x0_glob      = np.zeros((1,n))
+        x0[0,:]      = ClosedLoopBasicLMPC.x[0,:]
+        x0_glob[0,:] = ClosedLoopBasicLMPC.x_glob[0,:]
+        
+        for it in range(2, ShuffledLaps):
+            ClosedLoopBasicLMPC.updateInitialConditions(x0, x0_glob)
+            BasicLMPCSimulator.Sim(ClosedLoopBasicLMPC, BasicLMPCController, BasicLMPCOpenLoopData) #this runs one lap at a time due to initialization!
+            BasicLMPCController.addTrajectory(ClosedLoopBasicLMPC)
+        
+            if BasicLMPCController.feasible == 0:
+                infFlag = True
+                break
+            else:
+                x0[0,:]      = ClosedLoopBasicLMPC.x[0,:]
+                x0_glob[0,:] = ClosedLoopBasicLMPC.x_glob[0,:]
+                
+        if infFlag:
+            continue
+        
+        # laps over time
+        plt.figure()
+        plotClosedLoopLMPC(BasicLMPCController,shuffledMap)
+        plt.title('PID Initialized')
+        plt.show()
+               
+        # ================================ 3. Compare performance between controllers ========================================= 
+        # lap time vs. lap
+        plt.figure()
+        plt.plot(range(1,BasicLMPCController.it-1), BasicLMPCController.Qfun[0,2:]*dt,label='PID-initialized')
+        plt.plot(range(1,TDMPCController.it-1), TDMPCController.Qfun[0,2:]*dt,label='TDMPC-initialized')
+        plt.legend()
+        plt.title('Lap Time vs. Lap')
+        plt.show()
+        
+        # save for later
+        file_data = open('data/ShuffledData.obj','wb')
+        pickle.dump(BasicLMPCController,file_data)
+        pickle.dump(TDMPCController,file_data)
+        pickle.dump(shuffledMap,file_data)
+        file_data.close()
     
-    # ========================================= 0. Set up for simulation on new track ======================================
-    simulatorPID = Simulator(shuffledMap) 
-    simulatorPID.laps = 1
-    
-    # ========================================= 0a. Run the PID controller on new track =====================================
-    ClosedLoopDataShuffledPID = ClosedLoopData(dt, 0.5*Time , v0) #form matrices for experiment data
-    ShuffledPIDController = PID(vt) #sets the reference velocity and some timers?
-    simulatorPID.Sim(ClosedLoopDataShuffledPID, ShuffledPIDController) #simulates the PID controller for Time timesteps
-    file_data = open('data/ClosedLoopDataShuffledPID.obj', 'wb')
-    pickle.dump(ClosedLoopDataShuffledPID, file_data)
+        print 'Finished'
+        print('Cost_Improvement: ', Cost_Improvement)
+        
+        # update this in order to do another shuffling round.
+        map  = shuffledMap
+        Cost_Improvement[Shuffling_Iterations] = 100*np.sum(TDMPCController.Qfun[0,2:]*dt) / np.sum(BasicLMPCController.Qfun[0,2:]*dt)
+        Shuffling_Iterations += 1
+               
+else:
+    # load the map and controllers
+    file_data = open('data/ShuffledData.obj', 'rb')
+    BasicLMPCController = pickle.load(file_data)
+    TDMPCController = pickle.load(file_data)
+    shuffledMap = pickle.load(file_data)
     file_data.close()
     
-    plotTrajectory(shuffledMap, ClosedLoopDataShuffledPID.x, ClosedLoopDataShuffledPID.x_glob, ClosedLoopDataShuffledPID.u)
+    # plot the time improvement
+    plt.figure()
+    plt.plot(range(1,BasicLMPCController.it-1), BasicLMPCController.Qfun[0,2:]*dt,label='PID-initialized')
+    plt.plot(range(1,TDMPCController.it-1), TDMPCController.Qfun[0,2:]*dt,label='TDMPC-initialized')
+    plt.legend()
+    plt.title('Lap Time vs. Lap')
     plt.show()
     
-    # ========================================= 2 Create and run LMPC controller 2 ========================================= 
-    raw_input("Going to start running Shuffled LMPC2")
-    # This controller will start with a safe set consisting of RSS and PID laps
-     
     
-    ClosedLoopShuffledLMPC21 = ClosedLoopData(dt, TimeLMPC, v0)
-    ShuffledLMPC21OpenLoopData = LMPCprediction(N, n, d, TimeLMPC, numSS_Points, ShuffledLaps) #to store open-loop prediction and safe sets
-    ShuffledLMPC21Simulator = Simulator(shuffledMap, 1, 1) #now this simulator only runs for one lap, with the LMPC flag ON
-    ShuffledLMPC21Controller = ControllerLMPC(numSS_Points, numSS_it, N, Qslack, Q_LMPC, R_LMPC, dR_LMPC, n, d, shift, dt, shuffledMap, ShuffledLaps, TimeLMPC, LMPC_Solver)
-    
-    rSS, ruSS, rQfun = onlyLMPController.selectBestTrajectory()
-    ShuffledLMPC21Controller.addReachableSet(rSS,ruSS,rQfun,shuffledMap) #################### FIX THIS FIX THIS
-    ShuffledLMPC21Controller.addTrajectory(ClosedLoopDataShuffledPID)
-    
-    
-    x0           = np.zeros((1,n))
-    x0_glob      = np.zeros((1,n))
-    x0[0,:]      = ClosedLoopShuffledLMPC21.x[0,:]
-    x0_glob[0,:] = ClosedLoopShuffledLMPC21.x_glob[0,:]
-    
-    for it in range(2, ShuffledLaps):
-        #ShuffledLMPC2Controller.numSS_it = ShuffledLMPC2Controller.it
-        ClosedLoopShuffledLMPC21.updateInitialConditions(x0, x0_glob)
-        ShuffledLMPC21Simulator.Sim(ClosedLoopShuffledLMPC21, ShuffledLMPC21Controller, ShuffledLMPC21OpenLoopData) #this runs one lap at a time due to initialization!
-        ShuffledLMPC21Controller.addTrajectory(ClosedLoopShuffledLMPC21)
-        onlyLMPController.addTrajectoryToSS(onlyLMPController.shuffledSS, onlyLMPController.shuffleduSS, onlyLMPController.shuffledQfun, ClosedLoopShuffledLMPC21)
-    
-        if ShuffledLMPC21Controller.feasible == 0:
-            break
-        else:
-            # Reset Initial Conditions
-            x0[0,:]      = ClosedLoopShuffledLMPC21.x[0,:]
-            x0_glob[0,:] = ClosedLoopShuffledLMPC21.x_glob[0,:]
-    
-    
-    plotClosedLoopLMPC(ShuffledLMPC21Controller,shuffledMap)
-    plt.show()
-            
-            
-            
-            
-            
-    raw_input("Compare against PID next")
-        
-    # ========================================= Check Performance against PID-Only =====================================
-    #### THIS IS WHERE TO CHECK PERFORMANCE AGAINST PID-ONLY 
-    
-    # run the PID-initialized LMPC (on same N as training)
-    ClosedLoopShuffledLMPC_PID = ClosedLoopData(dt, TimeLMPC, v0)
-    ShuffledLMPC_PIDOpenLoopData = LMPCprediction(N, n, d, TimeLMPC, numSS_Points, Laps) #to store open-loop prediction and safe sets
-    ShuffledLMPC_PIDSimulator = Simulator(shuffledMap, 1, 1) #now this simulator only runs for one lap, with the LMPC flag ON
-    ShuffledLMPC_PIDController = ControllerLMPC(numSS_Points, numSS_it, N, Qslack, Q_LMPC, R_LMPC, dR_LMPC, n, d, shift, dt, shuffledMap, Laps, TimeLMPC, LMPC_Solver)
-    
-    ShuffledLMPC_PIDController.addTrajectory(ClosedLoopDataShuffledPID)
-    ShuffledLMPC_PIDController.addTrajectory(ClosedLoopDataShuffledPID)
-    
-    x0           = np.zeros((1,n))
-    x0_glob      = np.zeros((1,n))
-    x0[0,:]      = ClosedLoopShuffledLMPC_PID.x[0,:]
-    x0_glob[0,:] = ClosedLoopShuffledLMPC_PID.x_glob[0,:]
-    
-    for it in range(2, Laps):
-        #ShuffledLMPC1Controller.numSS_it = ShuffledLMPC1Controller.it
-        ClosedLoopShuffledLMPC_PID.updateInitialConditions(x0, x0_glob)
-        ShuffledLMPC_PIDSimulator.Sim(ClosedLoopShuffledLMPC_PID, ShuffledLMPC_PIDController, ShuffledLMPC_PIDOpenLoopData) #this runs one lap at a time due to initialization!
-        ShuffledLMPC_PIDController.addTrajectory(ClosedLoopShuffledLMPC_PID)
-    
-        if ShuffledLMPC_PIDController.feasible == 0:
-            break
-        else:
-            x0[0,:]      = ClosedLoopShuffledLMPC_PID.x[0,:]
-            x0_glob[0,:] = ClosedLoopShuffledLMPC_PID.x_glob[0,:]
-    
-    
-    # plot the results
-    plotQprogression(ShuffledLMPCController, ShuffledLMPC_PIDController,dt,shuffledMap,Shuffling_Iterations,dl_path)
-    Cost_Improvement[Shuffling_Iterations] = 100*np.sum(ShuffledLMPCController.Qfun[0,2:]*dt) / np.sum(ShuffledLMPC_PIDController.Qfun[0,2:]*dt)
-    
-    # ========================================= Reset variables for repeat =====================================
-    #### RESET EVERYTHING
-    map = shuffledMap
-    
-    # reset the controller SS to the shuffled SS
-    onlyLMPController.SS = onlyLMPController.shuffledSS
-    onlyLMPController.uSS = onlyLMPController.shuffleduSS
-    onlyLMPController.Qfun = onlyLMPController.shuffledQfun
-    
-    
-    Shuffling_Iterations += 1    
-    raw_input("Start another shuffling iteration?")
-
-# Plot the overall comparisons
-plt.plot(range(1,DesiredShuffles+1),Cost_Improvement[:,0])
-plt.title('Cost Improvement with Reachable Safe Set Initialization')
-plt.xlabel('Track Recombinations')
-plt.ylabel('100 * (Cost of RSS Initialization / Cost of PID Initialization)')
-plt.savefig(dl_path+'/Cost_Improvement.eps')
-plt.show()
-
-# <codecell> PLOTTING FOR CDC PAPER
-#file_data = open('data/GoodShuffledData.obj', 'rb')
-#SS = pickle.load(file_data)
-#file_data.close()
-#
-##plotSafeSet(GoodShuffledData,shuffledMap)
-#
-#plt.figure()
-#counter = 0
-#SSPoints = np.zeros([SS.shape[0],2])
-#for lap in range(0,SS.shape[2]):
-#    for state in range(0,SS.shape[0]):
-#        if SS[state,0,lap]<1000:
-#            #print(counter)
-#            try:
-#                SSPoints[counter,:] = shuffledMap.getGlobalPosition(SS[state,4,lap], SS[state,5,lap])
-#                counter += 1
-#            except TypeError:
-#                print("something about the nonetype again")
-#                
-#plt.plot(SSPoints[:,0],SSPoints[:,1],'.r')
-#
-#Points = int(np.floor(10 * (shuffledMap.PointAndTangent[-1, 3] + shuffledMap.PointAndTangent[-1, 4])))
-#Points1 = np.zeros((Points, 2))
-#Points2 = np.zeros((Points, 2))
-#Points0 = np.zeros((Points, 2))
-#for i in range(0, int(Points)):
-#    Points1[i, :] = shuffledMap.getGlobalPosition(i * 0.1, shuffledMap.width)
-#    Points2[i, :] = shuffledMap.getGlobalPosition(i * 0.1, -shuffledMap.width)
-#    Points0[i, :] = shuffledMap.getGlobalPosition(i * 0.1, 0)
-#
-#plt.plot(shuffledMap.PointAndTangent[:, 0], shuffledMap.PointAndTangent[:, 1], 'o')
-#plt.plot(Points0[:, 0], Points0[:, 1], '--')
-#plt.plot(Points1[:, 0], Points1[:, 1], '-b')
-#plt.plot(Points2[:, 0], Points2[:, 1], '-b')
-#plt.show()
+# End
