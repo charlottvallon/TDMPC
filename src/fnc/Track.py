@@ -14,70 +14,19 @@ class Map():
         Modify the vector spec to change the geometry of the track
         """
         # General array used in Char/Ugo's papers:
-#        self.width = width
-#        spec = np.array([[140 * 0.03, 0],
-#                         [80 * 0.03, -80 * 0.03 * 2 / np.pi],
-#                         # Note s = 1 * np.pi / 2 and r = -1 ---> Angle spanned = np.pi / 2
-#                         [20 * 0.03, 0],
-#                         [80 * 0.03, -80 * 0.03 * 2 / np.pi],
-#                         [40 * 0.03, +40 * 0.03 * 10 / np.pi],
-#                         [60 * 0.03, -60 * 0.03 * 5 / np.pi],
-#                         [40 * 0.03, +40 * 0.03 * 10 / np.pi],
-#                         [80 * 0.03, -80 * 0.03 * 2 / np.pi],
-#                         [20 * 0.03, 0],
-#                         [80 * 0.03, -80 * 0.03 * 2 / np.pi]]) # repeat the last one again?
-    
-            # General array used in Char/Ugo's papers:
-#        self.width = width
-#        spec = np.array([[140 * 0.03, 0],
-#                         [80 * 0.03, -80 * 0.03 * 2 / np.pi],
-#                         # Note s = 1 * np.pi / 2 and r = -1 ---> Angle spanned = np.pi / 2
-#                         [20 * 0.03, 0],
-#                         [80 * 0.03, -80 * 0.03 * 2 / np.pi],
-#                         [40 * 0.03, +40 * 0.03 * 10 / np.pi],
-#                         [60 * 0.03, -60 * 0.03 * 5 / np.pi],
-#                         [40 * 0.03, +40 * 0.03 * 10 / np.pi],
-#                         [80 * 0.03, -80 * 0.03 * 2 / np.pi],
-#                         [20 * 0.03, 0],
-#                         [80 * 0.03, -80 * 0.03 * 2 / np.pi]]) # repeat the last one again?
-
-
-        # Test array to evaluate different driving strategies:
-#        self.width = width
-#        spec = np.array([[230 * 0.03, 0],
-#                         [40 * 0.03, +40 * 0.03 * 10 / np.pi],
-#                         [60 * 0.03, -60 * 0.03 * 5 / np.pi],
-#                         [40 * 0.03, +40 * 0.03 * 10 / np.pi],
-#                         [140 * 0.03, 0],
-#                         [80 * 0.03, -80 * 0.03 * 2 / np.pi],
-#                         [70 * 0.03, 0],
-#                         [80 * 0.03, -80 * 0.03 * 2 / np.pi],
-#                         [200 * 0.03, 0],
-#                         [80 * 0.03, 80 * 0.03 * 2 / np.pi],
-#                         [70 * 0.03, 0],
-#                         [80 * 0.03, -80 * 0.03 * 2 / np.pi],
-#                         [140 * 0.03, 0],
-#                         [80 * 0.03, -80 * 0.03 * 2 / np.pi],
-#                         [140 * 0.03, 0],
-#                         [80 * 0.03, 80 * 0.03 * 2 / np.pi],
-#                         [200 * 0.03, 0],
-#                         [80 * 0.03, -80 * 0.03 * 2 / np.pi],
-#                         [80 * 0.03, -80 * 0.03 * 2 / np.pi],                        
-#                         [230 * 0.03, 0]
-#                         ]) # repeat the last one again?
-        
         self.width = width
-        spec = np.array([[400 * 0.03, 0],
-                         [80 * 0.03, -80 * 0.03 * 2 / np.pi], 
+        spec = np.array([[140 * 0.03, 0],
+                         [80 * 0.03, -80 * 0.03 * 2 / np.pi],
+                         # Note s = 1 * np.pi / 2 and r = -1 ---> Angle spanned = np.pi / 2
                          [20 * 0.03, 0],
-                         [80 * 0.03, -80 * 0.03 * 2 / np.pi], 
-                         [400 * 0.03, 0],
-                         [80 * 0.03, -80 * 0.03 * 2 / np.pi], 
+                         [80 * 0.03, -80 * 0.03 * 2 / np.pi],
+                         [40 * 0.03, +40 * 0.03 * 10 / np.pi],
+                         [60 * 0.03, -60 * 0.03 * 5 / np.pi],
+                         [40 * 0.03, +40 * 0.03 * 10 / np.pi],
+                         [80 * 0.03, -80 * 0.03 * 2 / np.pi],
                          [20 * 0.03, 0],
-                         [80 * 0.03, -80 * 0.03 * 2 / np.pi] 
-                         ]) # repeat the last one again?
-        
-
+                         [80 * 0.03, -80 * 0.03 * 2 / np.pi]]) 
+    
         # Now given the above segments we compute the (x, y) points of the track and the angle of the tangent vector (psi) at
         # these points. For each segment we compute the (x, y, psi) coordinate at the last point of the segment. Furthermore,
         # we compute also the cumulative s at the starting point of the segment at signed curvature
